@@ -16,16 +16,16 @@ INC_DIR=./include
 BIN_DIR=./bin
 SRC_DIR=./src
 
-all: regra1 regra2 regran
+SRC=$(wildcard $(SRC_DIR)*.c)
+BIN=$(addprefix $(BIN_DIR),$(notdir $(SRC:.c=.o)))
 
-regra1: #dependências para a regra1
-	$(CC) -o $(BIN_DIR)regra1 $(SRC_DIR)regra1.c -Wall
+CFLAGS=-Wall -I$(INC_DIR)
 
-regra2: #dependências para a regra2
-	$(CC) -o $(BIN_DIR)regra2 $(SRC_DIR)regra2.c -Wall
+all: $(BIN)
 
-regran: #dependências para a regran
-	$(CC) -o $(BIN_DIR)regran $(SRC_DIR)regran.c -Wall
+%.o: %.c
+	@mkdir -p $(BIN_DIR)
+	$(CC) -c $(BIN_DIR)$@ $(SRC_DIR)$^ $(CFLAGS)
 
 clean:
 	rm -rf $(LIB_DIR)/*.a $(BIN_DIR)/*.o $(SRC_DIR)/*~ $(INC_DIR)/*~ *~
