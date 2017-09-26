@@ -15,5 +15,15 @@ int cidentify (char *name, int size){
     return -1;
 }
 
+int ccreate (void* (*start)(void*), void *arg, int prio){
+    //TODO
+}
 
+int cyield(void){
+    //TODO
+}
+
+int cjoin(int tid){
+    //TODO
+}
 
