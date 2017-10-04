@@ -4,44 +4,69 @@
 #include <ucontext.h>
 #include "../include/support.h"
 #include "../include/cthread.h"
+#include "../include/cdata.h"
+#include "../include/insert.h"
+
+
+PFILA2 blockedQueue;
+PFILA2 readyQueue;
+PFILA2 cjoinQueue;
+TCB_t *running;
+
+TCB_t mainThread;
+
+ucontext_t dispatcher;
+char dispatcherStack[SIGSTKSZ];
 
 int initializedCthreads = 0;
+int tid = 1;
 
-FILA2 blockedQueue;
-FILA2 readyQueue;
-FILA2 running;
 
-ucontext_t scheduler;
+void unlockJoin(int tid){
+    ///continua...
+}
+
+
+void scheduler(){
+    if(running){ // NULL = cyeld, !NULL = execution ended
+        running->state = PROCST_TERMINO;
+        unlockJoin(running->tid);
+        ///continua...
+    }
+}
 
 
 void initializeCthreads(){
     int failed = 1;
 
-    getcontext(&scheduler);
-    ///inicializar esses parametros do scheduler
-    /* ucontext_t *uc_link     pointer to the context that will be resumed
-                        when this context returns
-        sigset_t    uc_sigmask  the set of signals that are blocked when this
-                        context is active
-        stack_t     uc_stack    the stack used by this context
-        mcontext_t  uc_mcontext a machine-specific representation of the saved
-                        context
-    */
-    ///makecontext(&scheduler, ????????????????); //void makecontext(ucontext_t *, (void *)(), int, ...);
-    /// running eh uma fila de um soh ou eh direto um TCB_t?
-
-    failed = CreateFila2(&blockedQueue);
+    failed = CreateFila2(blockedQueue);
     if(failed){
         printf("Error: blocked queue initialization failed\n");
     }
-    failed = CreateFila2(&readyQueue);
+    failed = CreateFila2(readyQueue);
     if(failed){
         printf("Error: ready queue initialization failed\n");
     }
-    failed = CreateFila2(&running);
+    failed = CreateFila2(cjoinQueue);
     if(failed){
-        printf("Error: running state initialization failed\n");
+        printf("Error: join queue initialization failed\n");
     }
+
+    //iterator context
+    getcontext(&dispatcher);
+    dispatcher.uc_link = 0;
+    dispatcher.uc_stack.ss_sp = dispatcherStack;
+    dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
+    ///makecontext(&dispatcher, ????????????????); //void makecontext(ucontext_t *, (void *)(), int, ...);
+
+    //get main thread context
+    mainThread.tid = 0; // main tid is 0
+    mainThread.prio = 0; //threads are created with highest priority
+    mainThread.state = PROCST_EXEC;
+    getcontext(&mainThread.context);
+
+    running = &mainThread;
+
 }
 
 
