@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <ucontext.h>
 #include "../include/support.h"
 #include "../include/cthread.h"
@@ -23,7 +24,41 @@ int tid = 1;
 
 
 void unlockJoin(int tid){
-    ///continua...
+    TCB_t *joinTh = 0, *blockTh ;
+    if(FirstFila2(cjoinQueue) != 0){//error or empty queue
+        return;
+    }
+    do{
+        if(cjoinQueue->it == 0){
+            break;
+        } else {
+            joinTh = (TCB_t *)GetAtIteratorFila2(cjoinQueue);
+            if (joinTh->tid == tid){
+                break;
+            }
+            joinTh = 0;
+        }
+    } while(NextFila2(cjoinQueue) == 0);
+
+    if (joinTh){//found the thread to be taken of joinQueue
+
+        if(FirstFila2(blockedQueue) != 0){//error or empty queue
+            return;
+        }
+        do{
+            if (blockedQueue->it == 0){
+                break;
+            }
+            if(joinTh == blockTh){//found thread in blockedQueue, remove it from both queues and put it on readyQueue;
+                DeleteAtIteratorFila2(blockedQueue);
+                DeleteAtIteratorFila2(cjoinQueue);
+                free(joinTh);
+                blockTh->state = PROCST_APTO;
+                AppendFila2(readyQueue, (void *)blockTh);
+                break;
+            }
+        } while (NextFila2(blockedQueue) == 0);
+    }
 }
 
 
