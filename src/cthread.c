@@ -13,9 +13,9 @@
 #include "insert.h"
 
 
-PFILA2 blockedQueue;
-PFILA2 readyQueue;
-PFILA2 cjoinQueue;
+FILA2 blockedQueue;
+FILA2 readyQueue;
+FILA2 cjoinQueue;
 TCB_t *running;
 
 TCB_t mainThread;
@@ -29,39 +29,39 @@ int tidTh = 1;
 
 void unjoin(int tid){
     TCB_t *joinTh = 0, *blockTh = 0;
-    if(FirstFila2(cjoinQueue) != 0){//error or empty queue
+    if(FirstFila2(&cjoinQueue) != 0){//error or empty queue
         return;
     }
     do{
-        if(cjoinQueue->it == 0){
+        if(cjoinQueue.it == 0){
             break;
         } else {
-            joinTh = (TCB_t *)GetAtIteratorFila2(cjoinQueue);
+            joinTh = (TCB_t *)GetAtIteratorFila2(&cjoinQueue);
             if (joinTh->tid == tid){
                 break;
             }
             joinTh = 0;
         }
-    } while(NextFila2(cjoinQueue) == 0);
+    } while(NextFila2(&cjoinQueue) == 0);
 
-    if (joinTh){//found the thread to be taken of joinQueue
+    if (joinTh){//found the thread to be taken off of joinQueue
 
-        if(FirstFila2(blockedQueue) != 0){//error or empty queue
+        if(FirstFila2(&blockedQueue) != 0){//error or empty queue
             return;
         }
         do{
-            if (blockedQueue->it == 0){
+            if (blockedQueue.it == 0){
                 break;
             }
-            if(joinTh == blockTh){//found thread in blockedQueue, remove it from both queues and put it on readyQueue;
-                DeleteAtIteratorFila2(blockedQueue);
-                DeleteAtIteratorFila2(cjoinQueue);
+            if(joinTh == blockTh){//found thread in blockedQueue, remove it from blocked queue and put it on readyQueue;
+                DeleteAtIteratorFila2(&blockedQueue);
+                DeleteAtIteratorFila2(&cjoinQueue);
                 free(joinTh);
                 blockTh->state = PROCST_APTO;
-                AppendFila2(readyQueue, (void *)blockTh);
+                AppendFila2(&readyQueue, (void *)blockTh);
                 break;
             }
-        } while (NextFila2(blockedQueue) == 0);
+        } while (NextFila2(&blockedQueue) == 0);
     }
 }
 
@@ -75,13 +75,13 @@ void* scheduler(){
         free(running);
         running = 0;
     }
-    if(FirstFila2(readyQueue) != 0){
+    if(FirstFila2(&readyQueue) != 0){
         return 0;
     }
 
     //mostPriorityTh = (TCB_t *)GetAtIteratorFila2(readyQueue);
-    running = (TCB_t *)GetAtIteratorFila2(readyQueue);
-    DeleteAtIteratorFila2(readyQueue);
+    running = (TCB_t *)GetAtIteratorFila2(&readyQueue);
+    DeleteAtIteratorFila2(&readyQueue);
     running->state = PROCST_EXEC;
     setcontext(&running->context);
         ///continua...
@@ -92,16 +92,15 @@ void* scheduler(){
 
 void initializeCthreads(){
     int failed = 1;
-
-    failed = CreateFila2(blockedQueue);
+    failed = CreateFila2(&blockedQueue);
     if(failed){
         printf("Error: blocked queue initialization failed\n");
     }
-    failed = CreateFila2(readyQueue);
+    failed = CreateFila2(&readyQueue);
     if(failed){
         printf("Error: ready queue initialization failed\n");
     }
-    failed = CreateFila2(cjoinQueue);
+    failed = CreateFila2(&cjoinQueue);
     if(failed){
         printf("Error: join queue initialization failed\n");
     }
@@ -111,7 +110,7 @@ void initializeCthreads(){
     dispatcher.uc_link = 0;
     dispatcher.uc_stack.ss_sp = dispatcherStack;
     dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
-    ///makecontext(&dispatcher, ????????????????); //void makecontext(ucontext_t *, (void *)(), int, ...);
+    makecontext(&dispatcher, (void(*)(void))scheduler, 0);
 
     //get main thread context
     mainThread.tid = 0; // main tid is 0
@@ -129,8 +128,8 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
     if (!initializedCthreads){
         initializeCthreads();
     }
-    newThread = malloc(sizeof(TCB_t));
-    newThread->prio = 0;
+    newThread = (TCB_t*)malloc(sizeof(TCB_t));
+    newThread->prio = prio;
     newThread->tid = tidTh;
     tidTh++;
     newThread->bTid = -1; //no blocking thread
@@ -138,11 +137,12 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
 
     getcontext(&newThread->context);
     newThread->context.uc_link = &dispatcher;
-    newThread->context.uc_stack.ss_sp = malloc(SIGSTKSZ);
+    newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
     newThread->context.uc_stack.ss_size = SIGSTKSZ;
     makecontext(&newThread->context, (void (*)(void))start, 1, arg);
 
-    if(AppendFila2(readyQueue, (void*)newThread) != 0){
+    if(AppendFila2(&readyQueue, (void*)newThread) != 0){
+    //if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
         return -1;
     }
 
@@ -150,7 +150,96 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
 }
 
 
+int cyield(void){
+    TCB_t *benevolentTh;
+    if(!initializedCthreads){
+        initializeCthreads();
+    }
+    if(FirstFila2(&readyQueue) != 0){
+        return 0;
+    }
+    benevolentTh = running;
+    benevolentTh->state = PROCST_APTO;
+    benevolentTh->prio = benevolentTh->prio + stopTimer();
+    if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
+    //if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
+        return -1;
+    }
+    running = 0;
+    startTimer();
+    swapcontext(&benevolentTh->context, &dispatcher);
+    return 0;
+}
 
+int isOnQueue(PFILA2 queue, int tid){
+    TCB_t *thread;
+    if(FirstFila2(queue) != 0){
+        return 0;
+    }
+    do{
+        if(queue->it == 0){
+            break;
+        }
+        thread = (TCB_t*)GetAtIteratorFila2(queue);
+        if(thread->tid == tid){
+            return 1;
+        }
+    }while(NextFila2(queue) == 0);
+    return 0;
+}
+
+int alreadyJoined(PFILA2 queue, int tid){
+    TCB_t *thread;
+    if(FirstFila2(queue) != 0){
+        return 0;
+    }
+    do{
+        if(queue->it == 0){
+            break;
+        }
+        thread = (TCB_t*)GetAtIteratorFila2(queue);
+        if(thread->bTid == tid){
+            return 1;
+        }
+    }while(NextFila2(queue) == 0);
+    return 0;
+}
+
+int cjoin(int tid){
+    TCB_t *thread, *joinTh;
+    if(!initializedCthreads){
+        initializeCthreads();
+    }
+    if(tid == 0){
+        printf("ERROR: you cannot make a cjoin for main!\n");
+        return -1;
+    }
+    if(alreadyJoined(&cjoinQueue, tid)){
+        printf("ERROR: you can only make a cjoin for a thread once at a time!\n");
+        return -1;
+    }
+    if(isOnQueue(&readyQueue, tid) || isOnQueue(&blockedQueue, tid)){
+        thread = running;
+        joinTh = thread;
+        joinTh->bTid = tid;
+        if(AppendFila2(&cjoinQueue, (void*)joinTh) != 0){
+        //if(InsertByPrio(&cjoinQueue, (void*)joinTh) != 0){
+            printf("Error: failed inserting in join queue");
+        }
+        thread->state = PROCST_BLOQ;
+        thread->prio = thread->prio + stopTimer();
+        if(AppendFila2(&blockedQueue, (void*)thread) != 0){
+        //if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
+            printf("Error: failed inserting in blocked queue");
+        }
+        running = 0;
+        startTimer();
+        swapcontext(&thread->context, &dispatcher);
+        return 0;
+    }
+    printf("ERROR: thread does not exist or already ended its execution!\n");
+    return -1;
+}
 
 
 int cidentify (char *name, int size){
