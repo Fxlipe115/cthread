@@ -3,10 +3,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ucontext.h>
-#include "../include/support.h"
-#include "../include/cthread.h"
-#include "../include/cdata.h"
-#include "../include/insert.h"
+//#include "../include/support.h"
+//#include "../include/cthread.h"
+//#include "../include/cdata.h"
+//#include "../include/insert.h"
+#include "support.h"
+#include "cthread.h"
+#include "cdata.h"
+#include "insert.h"
 
 
 PFILA2 blockedQueue;
@@ -20,11 +24,11 @@ ucontext_t dispatcher;
 char dispatcherStack[SIGSTKSZ];
 
 int initializedCthreads = 0;
-int tid = 1;
+int tidTh = 1;
 
 
-void unlockJoin(int tid){
-    TCB_t *joinTh = 0, *blockTh ;
+void unjoin(int tid){
+    TCB_t *joinTh = 0, *blockTh = 0;
     if(FirstFila2(cjoinQueue) != 0){//error or empty queue
         return;
     }
@@ -62,12 +66,27 @@ void unlockJoin(int tid){
 }
 
 
-void scheduler(){
+void* scheduler(){
+    //TCB_t *mostPriorityTh;
     if(running){ // NULL = cyeld, !NULL = execution ended
         running->state = PROCST_TERMINO;
-        unlockJoin(running->tid);
-        ///continua...
+        unjoin(running->tid);
+        free(running->context.uc_stack.ss_sp);
+        free(running);
+        running = 0;
     }
+    if(FirstFila2(readyQueue) != 0){
+        return 0;
+    }
+
+    //mostPriorityTh = (TCB_t *)GetAtIteratorFila2(readyQueue);
+    running = (TCB_t *)GetAtIteratorFila2(readyQueue);
+    DeleteAtIteratorFila2(readyQueue);
+    running->state = PROCST_EXEC;
+    setcontext(&running->context);
+        ///continua...
+    return 0;
+
 }
 
 
@@ -102,6 +121,32 @@ void initializeCthreads(){
 
     running = &mainThread;
 
+    initializedCthreads = 1;
+}
+
+int ccreate (void* (*start)(void*), void *arg, int prio){
+    TCB_t *newThread;
+    if (!initializedCthreads){
+        initializeCthreads();
+    }
+    newThread = malloc(sizeof(TCB_t));
+    newThread->prio = 0;
+    newThread->tid = tidTh;
+    tidTh++;
+    newThread->bTid = -1; //no blocking thread
+    newThread->state = PROCST_APTO;
+
+    getcontext(&newThread->context);
+    newThread->context.uc_link = &dispatcher;
+    newThread->context.uc_stack.ss_sp = malloc(SIGSTKSZ);
+    newThread->context.uc_stack.ss_size = SIGSTKSZ;
+    makecontext(&newThread->context, (void (*)(void))start, 1, arg);
+
+    if(AppendFila2(readyQueue, (void*)newThread) != 0){
+        return -1;
+    }
+
+    return newThread->tid;
 }
 
 
