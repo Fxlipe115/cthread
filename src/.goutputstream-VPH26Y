@@ -1,0 +1,11 @@
+#include "../include/cthread.h"
+#include <stdio.h>
+
+int main(){
+    int returned;
+    char str[100];
+    returned = cidentify(str,80);
+    printf("%d\n",returned);
+    printf("%s\n",str);
+    return 0;
+}
