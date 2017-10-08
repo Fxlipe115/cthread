@@ -37,7 +37,7 @@ void unjoin(int tid){
             break;
         } else {
             joinTh = (TCB_t *)GetAtIteratorFila2(&cjoinQueue);
-            if (joinTh->tid == tid){
+            if (joinTh->bTid == tid){
                 break;
             }
             joinTh = 0;
@@ -112,13 +112,15 @@ void initializeCthreads(){
     dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
     makecontext(&dispatcher, (void(*)(void))scheduler, 0);
 
-    //get main thread context
+    //saving main thread context
     mainThread.tid = 0; // main tid is 0
     mainThread.prio = 0; //threads are created with highest priority
     mainThread.state = PROCST_EXEC;
     getcontext(&mainThread.context);
 
     running = &mainThread;
+
+    startTimer();
 
     initializedCthreads = 1;
 }
@@ -142,7 +144,7 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
     makecontext(&newThread->context, (void (*)(void))start, 1, arg);
 
     if(AppendFila2(&readyQueue, (void*)newThread) != 0){
-    //if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
+    ///if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
         return -1;
     }
 
@@ -152,6 +154,7 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
 
 int cyield(void){
     TCB_t *benevolentTh;
+    unsigned int execTime;
     if(!initializedCthreads){
         initializeCthreads();
     }
@@ -160,9 +163,13 @@ int cyield(void){
     }
     benevolentTh = running;
     benevolentTh->state = PROCST_APTO;
-    benevolentTh->prio = benevolentTh->prio + stopTimer();
+    execTime = stopTimer();
+    benevolentTh->prio = benevolentTh->prio + execTime;
+    //benevolentTh->prio = benevolentTh->prio + stopTimer();
+    ///printf("prio: %d time: %u\n", benevolentTh->prio, execTime);
     if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
-    //if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
+    ///if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
+        startTimer();
         return -1;
     }
     running = 0;
@@ -207,15 +214,16 @@ int alreadyJoined(PFILA2 queue, int tid){
 
 int cjoin(int tid){
     TCB_t *thread, *joinTh;
+    unsigned int execTime;
     if(!initializedCthreads){
         initializeCthreads();
     }
     if(tid == 0){
-        printf("ERROR: you cannot make a cjoin for main!\n");
+        //printf("ERROR: you cannot make a cjoin for main!\n");
         return -1;
     }
     if(alreadyJoined(&cjoinQueue, tid)){
-        printf("ERROR: you can only make a cjoin for a thread once at a time!\n");
+        //printf("ERROR: you can only make a cjoin for a thread once at a time!\n");
         return -1;
     }
     if(isOnQueue(&readyQueue, tid) || isOnQueue(&blockedQueue, tid)){
@@ -227,9 +235,12 @@ int cjoin(int tid){
             printf("Error: failed inserting in join queue");
         }
         thread->state = PROCST_BLOQ;
-        thread->prio = thread->prio + stopTimer();
+        execTime = stopTimer();
+        thread->prio = thread->prio + execTime;
+        ///printf("prio: %d time: %u\n", thread->prio, execTime);
+        //thread->prio = thread->prio + stopTimer();
         if(AppendFila2(&blockedQueue, (void*)thread) != 0){
-        //if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
+        ///if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
             printf("Error: failed inserting in blocked queue");
         }
         running = 0;
