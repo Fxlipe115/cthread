@@ -245,7 +245,7 @@ int cjoin(int tid){
         }
         running = 0;
         startTimer();
-        swapcontext(&thread->context, &dispatcher);
+        ///swapcontext(&thread->context, &dispatcher);
         return 0;
     }
     printf("ERROR: thread does not exist or already ended its execution!\n");
