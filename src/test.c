@@ -7,6 +7,16 @@
 #include "support.h"
 #include "insert.h"
 
+/*Saída esperada sem prioridades:
+creating twinkle thread with tid = 1
+creating twinkle thread with tid = 2
+creating little thread with tid = 3
+creating star thread with tid = 4
+twinkle twinkle little star
+twinkle little twinkle star!
+the end.
+*/
+
 void twinkle();
 void little();
 void star();
@@ -18,7 +28,6 @@ void twinkle(){
 	cjoin(th2);
 	cyield();
 	printf("twinkle ");
-	cyield();
 }
 
 void little(){

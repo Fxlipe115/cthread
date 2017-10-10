@@ -20,8 +20,14 @@ TCB_t *running;
 
 TCB_t mainThread;
 
-ucontext_t dispatcher;
-char dispatcherStack[SIGSTKSZ];
+//ucontext_t dispatcher;
+//char dispatcherStack[SIGSTKSZ];
+
+ucontext_t cleaner;
+char cleanerStack[SIGSTKSZ];
+
+ucontext_t yield;
+char yieldStack[SIGSTKSZ];
 
 int initializedCthreads = 0;
 int tidTh = 1;
@@ -44,24 +50,24 @@ void unjoin(int tid){
         }
     } while(NextFila2(&cjoinQueue) == 0);
 
-    if (joinTh){//found the thread to be taken off of joinQueue
+    if(joinTh){//found the thread to be taken off of joinQueue
 
         if(FirstFila2(&blockedQueue) != 0){//error or empty queue
             return;
         }
         do{
-            if (blockedQueue.it == 0){
+            if(blockedQueue.it == 0){
                 break;
             }
+            blockTh = (TCB_t *)GetAtIteratorFila2(&blockedQueue);
             if(joinTh == blockTh){//found thread in blockedQueue, remove it from blocked queue and put it on readyQueue;
                 DeleteAtIteratorFila2(&blockedQueue);
                 DeleteAtIteratorFila2(&cjoinQueue);
-                free(joinTh);
                 blockTh->state = PROCST_APTO;
                 AppendFila2(&readyQueue, (void *)blockTh);
                 break;
             }
-        } while (NextFila2(&blockedQueue) == 0);
+        } while(NextFila2(&blockedQueue) == 0);
     }
 }
 
@@ -87,95 +93,6 @@ void* scheduler(){
         ///continua...
     return 0;
 
-}
-
-
-void initializeCthreads(){
-    int failed = 1;
-    failed = CreateFila2(&blockedQueue);
-    if(failed){
-        printf("Error: blocked queue initialization failed\n");
-    }
-    failed = CreateFila2(&readyQueue);
-    if(failed){
-        printf("Error: ready queue initialization failed\n");
-    }
-    failed = CreateFila2(&cjoinQueue);
-    if(failed){
-        printf("Error: join queue initialization failed\n");
-    }
-
-    //iterator context
-    getcontext(&dispatcher);
-    dispatcher.uc_link = 0;
-    dispatcher.uc_stack.ss_sp = dispatcherStack;
-    dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
-    makecontext(&dispatcher, (void(*)(void))scheduler, 0);
-
-    //saving main thread context
-    mainThread.tid = 0; // main tid is 0
-    mainThread.prio = 0; //threads are created with highest priority
-    mainThread.state = PROCST_EXEC;
-    getcontext(&mainThread.context);
-
-    running = &mainThread;
-
-    startTimer();
-
-    initializedCthreads = 1;
-}
-
-int ccreate (void* (*start)(void*), void *arg, int prio){
-    TCB_t *newThread;
-    if (!initializedCthreads){
-        initializeCthreads();
-    }
-    newThread = (TCB_t*)malloc(sizeof(TCB_t));
-    newThread->prio = prio;
-    newThread->tid = tidTh;
-    tidTh++;
-    newThread->bTid = -1; //no blocking thread
-    newThread->state = PROCST_APTO;
-
-    getcontext(&newThread->context);
-    newThread->context.uc_link = &dispatcher;
-    newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
-    newThread->context.uc_stack.ss_size = SIGSTKSZ;
-    makecontext(&newThread->context, (void (*)(void))start, 1, arg);
-
-    if(AppendFila2(&readyQueue, (void*)newThread) != 0){
-    ///if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
-        return -1;
-    }
-
-    return newThread->tid;
-}
-
-
-int cyield(void){
-    TCB_t *benevolentTh;
-    unsigned int execTime;
-    if(!initializedCthreads){
-        initializeCthreads();
-    }
-    if(FirstFila2(&readyQueue) != 0){
-        return 0;
-    }
-    benevolentTh = running;
-    benevolentTh->state = PROCST_APTO;
-    execTime = stopTimer();
-    benevolentTh->prio = benevolentTh->prio + execTime;
-    //benevolentTh->prio = benevolentTh->prio + stopTimer();
-    ///printf("prio: %d time: %u\n", benevolentTh->prio, execTime);
-    if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
-    ///if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
-        startTimer();
-        return -1;
-    }
-    running = 0;
-    startTimer();
-    swapcontext(&benevolentTh->context, &dispatcher);
-    return 0;
 }
 
 int isOnQueue(PFILA2 queue, int tid){
@@ -212,6 +129,148 @@ int alreadyJoined(PFILA2 queue, int tid){
     return 0;
 }
 
+void* scheduleAndDispatch(){
+    if(FirstFila2(&readyQueue) != 0){
+        return 0;
+    }
+
+    //mostPriorityTh = (TCB_t *)GetAtIteratorFila2(readyQueue);
+    running = (TCB_t *)GetAtIteratorFila2(&readyQueue);
+    DeleteAtIteratorFila2(&readyQueue);
+    running->state = PROCST_EXEC;
+    setcontext(&running->context);
+        ///continua...
+    return 0;
+}
+
+void* cleaning(){
+    if(running){
+        if(alreadyJoined(&cjoinQueue,running->tid)){
+            running->state = PROCST_TERMINO;
+            unjoin(running->tid);
+            free(running->context.uc_stack.ss_sp);
+            free(running);
+            running = 0;
+        }
+    }
+    scheduleAndDispatch();
+    return 0;
+}
+
+
+void initializeCthreads(){
+    int failed = 1;
+    failed = CreateFila2(&blockedQueue);
+    if(failed){
+        printf("Error: blocked queue initialization failed\n");
+    }
+    failed = CreateFila2(&readyQueue);
+    if(failed){
+        printf("Error: ready queue initialization failed\n");
+    }
+    failed = CreateFila2(&cjoinQueue);
+    if(failed){
+        printf("Error: join queue initialization failed\n");
+    }
+
+    //iterator context
+    /*getcontext(&dispatcher);
+    dispatcher.uc_link = 0;
+    dispatcher.uc_stack.ss_sp = dispatcherStack;
+    dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
+    makecontext(&dispatcher, (void(*)(void))scheduler, 0);
+    */
+
+    getcontext(&cleaner);
+    cleaner.uc_link = 0;
+    cleaner.uc_stack.ss_sp = cleanerStack;
+    cleaner.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
+    makecontext(&cleaner, (void(*)(void))cleaning, 0);
+
+    getcontext(&yield);
+    yield.uc_link = 0;
+    yield.uc_stack.ss_sp = yieldStack;
+    yield.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
+    makecontext(&yield, (void(*)(void))scheduleAndDispatch, 0);
+
+
+    //saving main thread context
+    mainThread.tid = 0; // main tid is 0
+    mainThread.prio = 0; //threads are created with highest priority
+    mainThread.state = PROCST_EXEC;
+    getcontext(&mainThread.context);
+
+    running = &mainThread;
+
+    startTimer();
+
+    initializedCthreads = 1;
+}
+
+int ccreate (void* (*start)(void*), void *arg, int prio){
+    TCB_t *newThread;
+    if (!initializedCthreads){
+        initializeCthreads();
+    }
+    newThread = (TCB_t*)malloc(sizeof(TCB_t));
+    newThread->prio = prio;
+    newThread->tid = tidTh;
+    tidTh++;
+    newThread->bTid = -1; //no blocking thread
+    newThread->state = PROCST_APTO;
+
+/*
+    getcontext(&newThread->context);
+    newThread->context.uc_link = &dispatcher;
+    newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
+    newThread->context.uc_stack.ss_size = SIGSTKSZ;
+    makecontext(&newThread->context, (void (*)(void))start, 1, arg);
+*/
+    getcontext(&newThread->context);
+    newThread->context.uc_link = &cleaner;
+    newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
+    newThread->context.uc_stack.ss_size = SIGSTKSZ;
+    makecontext(&newThread->context, (void (*)(void))start, 1, arg);
+
+    if(AppendFila2(&readyQueue, (void*)newThread) != 0){
+    ///if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
+        return -1;
+    }
+
+    return newThread->tid;
+}
+
+
+int cyield(void){
+    TCB_t *benevolentTh;
+    unsigned int execTime;
+    if(!initializedCthreads){
+        initializeCthreads();
+    }
+    if(FirstFila2(&readyQueue) != 0){
+        return 0;
+    }
+    benevolentTh = running;
+    benevolentTh->state = PROCST_APTO;
+    execTime = stopTimer();
+    benevolentTh->prio = benevolentTh->prio + execTime;
+    //benevolentTh->prio = benevolentTh->prio + stopTimer();
+    ///printf("prio: %d time: %u\n", benevolentTh->prio, execTime);
+    if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
+    ///if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
+        startTimer();
+        return -1;
+    }
+    running = 0;
+    startTimer();
+    ///swapcontext(&benevolentTh->context, &dispatcher);
+    swapcontext(&benevolentTh->context, &yield);
+
+    return 0;
+}
+
+
+
 int cjoin(int tid){
     TCB_t *thread, *joinTh;
     unsigned int execTime;
@@ -246,6 +305,8 @@ int cjoin(int tid){
         running = 0;
         startTimer();
         ///swapcontext(&thread->context, &dispatcher);
+        swapcontext(&thread->context, &cleaner);
+
         return 0;
     }
     printf("ERROR: thread does not exist or already ended its execution!\n");
