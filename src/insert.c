@@ -22,7 +22,7 @@ int	InsertByPrio(PFILA2 pfila, TCB_t *tcb) {
 	TCB_t *tcb_it;
 	
 	// pfile vazia?
-	if (FirstFila2(pfila)) {
+	if (FirstFila2(pfila)==0) {
 		do {
 			tcb_it = (TCB_t *) GetAtIteratorFila2(pfila);
 			if (tcb->prio < tcb_it->prio) {

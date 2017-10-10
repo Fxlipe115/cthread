@@ -305,6 +305,7 @@ int cjoin(int tid){
         running = 0;
         startTimer();
         ///swapcontext(&thread->context, &dispatcher);
+
         swapcontext(&thread->context, &cleaner);
         return 0;
     }
