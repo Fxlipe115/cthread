@@ -271,7 +271,7 @@ int cjoin(int tid){
         //printf("join - join\n");
         if(AppendFila2(&cjoinQueue, (void*)joinTh) != 0){
         ///if(InsertByPrio(&cjoinQueue, (void*)joinTh) != 0){
-            printf("Error: failed inserting in join queue");
+            fprintf(stderr, "Error: failed inserting in join queue");
         }
         thread->state = PROCST_BLOQ;
         execTime = stopTimer();
@@ -282,7 +282,7 @@ int cjoin(int tid){
         ///if(AppendFila2(&blockedQueue, (void*)thread) != 0){
         //printf("blocked - join\n");
         if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
-            printf("Error: failed inserting in blocked queue");
+            fprintf(stderr, "Error: failed inserting in blocked queue");
         }
         running = 0;
         //startTimer();
@@ -291,8 +291,45 @@ int cjoin(int tid){
 
         return 0;
     }
-    printf("ERROR: thread does not exist or already ended its execution!\n");
+    fprintf(stderr, "ERROR: thread does not exist or already ended its execution!\n");
     return -1;
+}
+
+
+int csem_init(csem_t *sem, int count){
+    sem->count = count;
+    return CreateFila2(sem->fila) ? 0 : -1;
+}
+
+
+int cwait(csem_t *sem){
+    if(!initializedCthreads){
+      initializeCthreads();
+    }
+
+    if(sem->count <= 0){
+        if(FirstFila2(&readyQueue)){
+            return 0;
+        }
+        /* não tenho certeza do que está acontecendo aqui
+        TCB_t *blockedTh;
+        blockedTh = running;
+        blockedTh->state = PROCST_BLOQ;
+        blockedTh->prio += stopTimer();
+
+        if(InsertByPrio(sem->fila, (void*)blockedTh) != 0){
+            startTimer();
+            return -1;
+        }
+        running = 0;
+        swapcontext(&blockedTh->context, &yield);
+    }*/
+    sem->count--;
+    return 0;
+}
+
+int csignal(csem_t *sem){
+    return 0;
 }
 
 
@@ -306,6 +343,3 @@ int cidentify (char *name, int size){
     }
     return -1;
 }
-
-
-
