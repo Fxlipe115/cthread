@@ -20,7 +20,7 @@ Ret:	==0, se conseguiu
 --------------------------------------------------------------------*/
 int	InsertByPrio(PFILA2 pfila, TCB_t *tcb) {
 	TCB_t *tcb_it;
-
+	
 	// pfile vazia?
 	if (FirstFila2(pfila)==0) {
 		do {
@@ -29,7 +29,7 @@ int	InsertByPrio(PFILA2 pfila, TCB_t *tcb) {
 				return InsertBeforeIteratorFila2(pfila, tcb);
 			}
 		} while (NextFila2(pfila)==0);
-	}
+	}	
 	return AppendFila2(pfila, (void *)tcb);
 }
 
