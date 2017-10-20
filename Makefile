@@ -10,6 +10,7 @@ BIN=$(addprefix $(BIN_DIR)/, $(notdir $(SRC:.c=.o)))
 CFLAGS=-Wall -I$(INC_DIR) -std=gnu99
 
 all: $(BIN)
+	ar -cvq $(LIB_DIR)/libcthread.a $^
 
 $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BIN_DIR)
