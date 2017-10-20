@@ -237,7 +237,7 @@ int cyield(void){
     ///if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
     //printf("ready - cyield\n");
     if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
-        startTimer();
+        //startTimer();
         return -1;
     }
     running = 0;
@@ -307,29 +307,49 @@ int cwait(csem_t *sem){
       initializeCthreads();
     }
 
+    if(sem == NULL){
+        return -1;
+    }
+
     if(sem->count <= 0){
         if(FirstFila2(&readyQueue)){
             return 0;
         }
-        /* não tenho certeza do que está acontecendo aqui
         TCB_t *blockedTh;
         blockedTh = running;
         blockedTh->state = PROCST_BLOQ;
         blockedTh->prio += stopTimer();
 
-        if(InsertByPrio(sem->fila, (void*)blockedTh) != 0){
+        if(AppendFila2(sem->fila, (void*)blockedTh) != 0){
             startTimer();
             return -1;
         }
         running = 0;
+        sem->count--;
         swapcontext(&blockedTh->context, &yield);
-    }*/
-    sem->count--;
+    }else{
+        sem->count--;
+    }
     return 0;
 }
 
 int csignal(csem_t *sem){
-    return 0;
+    if(!initializedCthreads){
+        initializeCthreads();
+    }
+
+    if(sem == NULL){
+        return -1;
+    }
+
+    if(FirstFila2(sem->fila) == 0){
+        TCB_t *freedTh = (TCB_t*)GetAtIteratorFila2(sem->fila);
+        DeleteAtIteratorFila2(sem->fila);
+        if(InsertByPrio(&readyQueue, (void*)freedTh) == 0){
+            return 0;
+        }
+    }
+    return -1;
 }
 
 
@@ -343,3 +363,4 @@ int cidentify (char *name, int size){
     }
     return -1;
 }
+
