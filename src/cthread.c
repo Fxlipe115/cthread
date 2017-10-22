@@ -1,12 +1,7 @@
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ucontext.h>
-//#include "../include/support.h"
-//#include "../include/cthread.h"
-//#include "../include/cdata.h"
-//#include "../include/insert.h"
 #include "support.h"
 #include "cthread.h"
 #include "cdata.h"
@@ -15,21 +10,18 @@
 FILA2 blockedQueue;
 FILA2 readyQueue;
 FILA2 cjoinQueue;
-TCB_t *running;
+TCB_t *running; //current thread using CPU
 
 TCB_t mainThread;
 
-//ucontext_t dispatcher;
-//char dispatcherStack[SIGSTKSZ];
-
-ucontext_t cleaner;
+ucontext_t cleaner; //ucontext for cleaning, scheduling and dispatching routines
 char cleanerStack[SIGSTKSZ];
 
-ucontext_t yield;
+ucontext_t yield;//ucontext for scheduling and dispatching routines
 char yieldStack[SIGSTKSZ];
 
-int initializedCthreads = 0;
-int tidTh = 1;
+int initializedCthreads = 0;//library initialization flag
+int tidTh = 1;//tid counter
 
 
 void unjoin(int tid){
@@ -63,7 +55,6 @@ void unjoin(int tid){
                 DeleteAtIteratorFila2(&blockedQueue);
                 DeleteAtIteratorFila2(&cjoinQueue);
                 blockTh->state = PROCST_APTO;
-                //AppendFila2(&readyQueue, (void *)blockTh);
                 InsertByPrio(&readyQueue, (void *)blockTh);
 
                 break;
@@ -112,7 +103,6 @@ void* scheduleAndDispatch(){
         return 0;
     }
 
-    //mostPriorityTh = (TCB_t *)GetAtIteratorFila2(readyQueue);
     running = (TCB_t *)GetAtIteratorFila2(&readyQueue);
     DeleteAtIteratorFila2(&readyQueue);
     running->state = PROCST_EXEC;
@@ -123,7 +113,7 @@ void* scheduleAndDispatch(){
 
 void* cleaning(){
     if(running){
-        if(alreadyJoined(&cjoinQueue,running->tid)){
+        if(alreadyJoined(&cjoinQueue,running->tid)){//running thread ended its execution: unjoin thread that was waiting
             running->state = PROCST_TERMINO;
             unjoin(running->tid);
             free(running->context.uc_stack.ss_sp);
@@ -151,25 +141,17 @@ void initializeCthreads(){
         printf("Error: join queue initialization failed\n");
     }
 
-    //iterator context
-    /*getcontext(&dispatcher);
-    dispatcher.uc_link = 0;
-    dispatcher.uc_stack.ss_sp = dispatcherStack;
-    dispatcher.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
-    makecontext(&dispatcher, (void(*)(void))scheduler, 0);
-    */
-
     getcontext(&cleaner);
     cleaner.uc_link = 0;
     cleaner.uc_stack.ss_sp = cleanerStack;
     cleaner.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
-    makecontext(&cleaner, (void(*)(void))cleaning, 0);
+    makecontext(&cleaner, (void(*)(void))cleaning, 0);//associate cleaner with cleaning (and schedule and dispatch) routine
 
     getcontext(&yield);
     yield.uc_link = 0;
     yield.uc_stack.ss_sp = yieldStack;
     yield.uc_stack.ss_size = SIGSTKSZ;//constant SIGSTKSZ is commonly used
-    makecontext(&yield, (void(*)(void))scheduleAndDispatch, 0);
+    makecontext(&yield, (void(*)(void))scheduleAndDispatch, 0);//associate yield with schedule and dispatch routine
 
 
     //saving main thread context
@@ -197,22 +179,12 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
     newThread->bTid = -1; //no blocking thread
     newThread->state = PROCST_APTO;
 
-/*
-    getcontext(&newThread->context);
-    newThread->context.uc_link = &dispatcher;
-    newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
-    newThread->context.uc_stack.ss_size = SIGSTKSZ;
-    makecontext(&newThread->context, (void (*)(void))start, 1, arg);
-*/
     getcontext(&newThread->context);
     newThread->context.uc_link = &cleaner;
     newThread->context.uc_stack.ss_sp = (char*)malloc(SIGSTKSZ);
     newThread->context.uc_stack.ss_size = SIGSTKSZ;
     makecontext(&newThread->context, (void (*)(void))start, 1, arg);
 
-    ///if(AppendFila2(&readyQueue, (void*)newThread) != 0){
-    //printf("ready - ccreate\n");
-    //printf("tid: %d - prio: %d\n", newThread->tid, newThread->prio);
     if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
         return -1;
     }
@@ -231,23 +203,15 @@ int cyield(void){
         return 0;
     }
     benevolentTh = running;
-    //printf("tid: %d - prio: %u(cyield antes)\n", benevolentTh->tid, benevolentTh->prio);
     benevolentTh->state = PROCST_APTO;
     execTime = stopTimer();
-    //printf("%u + %u = %u\n", execTime, benevolentTh->prio, benevolentTh->prio+execTime);
     benevolentTh->prio = benevolentTh->prio + execTime;
-    //benevolentTh->prio = benevolentTh->prio + stopTimer();
-    printf("tid: %d - prio: %u time: %u (cyield)\n", benevolentTh->tid, benevolentTh->prio, execTime);
-    //printf("yield: %d - prio: %d\n",benevolentTh->tid, benevolentTh->prio);
-    ///if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
-    //printf("ready - cyield\n");
+
     if(InsertByPrio(&readyQueue, (void*)benevolentTh) != 0){
-        //startTimer();
         return -1;
     }
+
     running = 0;
-    //startTimer();
-    ///swapcontext(&benevolentTh->context, &dispatcher);
     swapcontext(&benevolentTh->context, &yield);
 
     return 0;
@@ -273,37 +237,34 @@ int cjoin(int tid){
         thread = running;
         joinTh = thread;
         joinTh->bTid = tid;
-        //printf("join - join\n");
         if(AppendFila2(&cjoinQueue, (void*)joinTh) != 0){
-        ///if(InsertByPrio(&cjoinQueue, (void*)joinTh) != 0){
             fprintf(stderr, "Error: failed inserting in join queue");
         }
         thread->state = PROCST_BLOQ;
         execTime = stopTimer();
         thread->prio = thread->prio + execTime;
-        printf("tid: %d - prio: %u time: %u (cjoin)\n", thread->tid, thread->prio, execTime);
-        //printf("join: %d - prio: %d\n",thread->tid, thread->prio);
-        //thread->prio = thread->prio + stopTimer();
         if(AppendFila2(&blockedQueue, (void*)thread) != 0){
-        //printf("blocked - join\n");
-        //if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
             fprintf(stderr, "Error: failed inserting in blocked queue");
         }
         running = 0;
-        //startTimer();
-        ///swapcontext(&thread->context, &dispatcher);
         swapcontext(&thread->context, &cleaner);
 
         return 0;
     }
-    fprintf(stderr, "ERROR: thread does not exist or already ended its execution!\n");
+    //fprintf(stderr, "ERROR: thread does not exist or already ended its execution!\n");
     return -1;
 }
 
 
 int csem_init(csem_t *sem, int count){
+    if(!initializedCthreads){
+      initializeCthreads();
+    }
     sem->count = count;
     sem->fila = malloc(sizeof(FILA2));
+    if(sem->fila == NULL){
+        return -1;
+    }
     return CreateFila2(sem->fila) ? -1 : 0;
 }
 
@@ -334,7 +295,8 @@ int cwait(csem_t *sem){
         running = 0;
         //sem->count--;
         sem->count = sem->count - 1;
-        swapcontext(&blockedTh->context, &yield);
+        //swapcontext(&blockedTh->context, &yield);
+        swapcontext(&blockedTh->context, &cleaner);
     }else{
         //sem->count--;
         sem->count = sem->count - 1;
@@ -350,10 +312,12 @@ int csignal(csem_t *sem){
     if(sem == NULL){
         return -1;
     }
+    sem->count = sem->count + 1;
 
     if(FirstFila2(sem->fila) == 0){
         TCB_t *freedTh = (TCB_t*)GetAtIteratorFila2(sem->fila);
         DeleteAtIteratorFila2(sem->fila);
+        freedTh->state = PROCST_APTO;
         if(InsertByPrio(&readyQueue, (void*)freedTh) == 0){
             return 0;
         }
