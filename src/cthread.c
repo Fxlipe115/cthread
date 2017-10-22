@@ -63,7 +63,9 @@ void unjoin(int tid){
                 DeleteAtIteratorFila2(&blockedQueue);
                 DeleteAtIteratorFila2(&cjoinQueue);
                 blockTh->state = PROCST_APTO;
-                AppendFila2(&readyQueue, (void *)blockTh);
+                //AppendFila2(&readyQueue, (void *)blockTh);
+                InsertByPrio(&readyQueue, (void *)blockTh);
+
                 break;
             }
         } while(NextFila2(&blockedQueue) == 0);
@@ -210,6 +212,7 @@ int ccreate (void* (*start)(void*), void *arg, int prio){
 
     ///if(AppendFila2(&readyQueue, (void*)newThread) != 0){
     //printf("ready - ccreate\n");
+    //printf("tid: %d - prio: %d\n", newThread->tid, newThread->prio);
     if(InsertByPrio(&readyQueue, (void*)newThread) != 0){
         return -1;
     }
@@ -228,11 +231,13 @@ int cyield(void){
         return 0;
     }
     benevolentTh = running;
+    //printf("tid: %d - prio: %u(cyield antes)\n", benevolentTh->tid, benevolentTh->prio);
     benevolentTh->state = PROCST_APTO;
     execTime = stopTimer();
+    //printf("%u + %u = %u\n", execTime, benevolentTh->prio, benevolentTh->prio+execTime);
     benevolentTh->prio = benevolentTh->prio + execTime;
     //benevolentTh->prio = benevolentTh->prio + stopTimer();
-    printf("prio: %d time: %u\n", benevolentTh->prio, execTime);
+    printf("tid: %d - prio: %u time: %u (cyield)\n", benevolentTh->tid, benevolentTh->prio, execTime);
     //printf("yield: %d - prio: %d\n",benevolentTh->tid, benevolentTh->prio);
     ///if(AppendFila2(&readyQueue, (void*)benevolentTh) != 0){
     //printf("ready - cyield\n");
@@ -276,12 +281,12 @@ int cjoin(int tid){
         thread->state = PROCST_BLOQ;
         execTime = stopTimer();
         thread->prio = thread->prio + execTime;
-        printf("prio: %d time: %u\n", thread->prio, execTime);
+        printf("tid: %d - prio: %u time: %u (cjoin)\n", thread->tid, thread->prio, execTime);
         //printf("join: %d - prio: %d\n",thread->tid, thread->prio);
         //thread->prio = thread->prio + stopTimer();
-        ///if(AppendFila2(&blockedQueue, (void*)thread) != 0){
+        if(AppendFila2(&blockedQueue, (void*)thread) != 0){
         //printf("blocked - join\n");
-        if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
+        //if(InsertByPrio(&blockedQueue, (void*)thread) != 0){
             fprintf(stderr, "Error: failed inserting in blocked queue");
         }
         running = 0;
@@ -298,7 +303,8 @@ int cjoin(int tid){
 
 int csem_init(csem_t *sem, int count){
     sem->count = count;
-    return CreateFila2(sem->fila) ? 0 : -1;
+    sem->fila = malloc(sizeof(FILA2));
+    return CreateFila2(sem->fila) ? -1 : 0;
 }
 
 
@@ -318,17 +324,20 @@ int cwait(csem_t *sem){
         TCB_t *blockedTh;
         blockedTh = running;
         blockedTh->state = PROCST_BLOQ;
-        blockedTh->prio += stopTimer();
+        //blockedTh->prio += stopTimer();
+        blockedTh->prio = blockedTh->prio + stopTimer();
 
         if(AppendFila2(sem->fila, (void*)blockedTh) != 0){
-            startTimer();
+            //startTimer();
             return -1;
         }
         running = 0;
-        sem->count--;
+        //sem->count--;
+        sem->count = sem->count - 1;
         swapcontext(&blockedTh->context, &yield);
     }else{
-        sem->count--;
+        //sem->count--;
+        sem->count = sem->count - 1;
     }
     return 0;
 }
