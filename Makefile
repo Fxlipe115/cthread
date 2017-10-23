@@ -6,11 +6,11 @@ SRC_DIR=./src
 
 SRC=$(wildcard $(SRC_DIR)/*.c)
 BIN=$(addprefix $(BIN_DIR)/, $(notdir $(SRC:.c=.o)))
-
-CFLAGS=-Wall -I$(INC_DIR) -std=gnu99
+CFLAGS=-Wall -I$(INC_DIR) -std=gnu99 -m32
 
 all: $(BIN)
-	ar -cvq $(LIB_DIR)/libcthread.a $^
+	ar -cvq $(LIB_DIR)/libcthread.a $^ $(BIN_DIR)/support.o
+
 
 $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BIN_DIR)
