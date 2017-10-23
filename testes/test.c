@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <ucontext.h>
 
+#include "cdata.h"
 #include "cthread.h"
+#include "support.h"
+#include "insert.h"
 
 /*Saída esperada sem prioridades:
 creating twinkle thread with tid = 1
