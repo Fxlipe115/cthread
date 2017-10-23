@@ -285,20 +285,15 @@ int cwait(csem_t *sem){
         TCB_t *blockedTh;
         blockedTh = running;
         blockedTh->state = PROCST_BLOQ;
-        //blockedTh->prio += stopTimer();
         blockedTh->prio = blockedTh->prio + stopTimer();
 
         if(AppendFila2(sem->fila, (void*)blockedTh) != 0){
-            //startTimer();
             return -1;
         }
         running = 0;
-        //sem->count--;
         sem->count = sem->count - 1;
-        //swapcontext(&blockedTh->context, &yield);
         swapcontext(&blockedTh->context, &cleaner);
     }else{
-        //sem->count--;
         sem->count = sem->count - 1;
     }
     return 0;
