@@ -11,6 +11,7 @@ FILA2 blockedQueue;
 FILA2 readyQueue;
 FILA2 cjoinQueue;
 TCB_t *running; //current thread using CPU
+FILA2 semaphoreTids;
 
 TCB_t mainThread;
 
@@ -81,6 +82,23 @@ int isOnQueue(PFILA2 queue, int tid){
     return 0;
 }
 
+int isOnQueueTid(PFILA2 queue, int tid){
+    int *semTid = &tid;
+    if(FirstFila2(queue) != 0){
+        return 0;
+    }
+    do{
+        if(queue->it == 0){
+            break;
+        }
+        *semTid = (int)GetAtIteratorFila2(queue);
+        if(*semTid == tid){
+            return 1;
+        }
+    }while(NextFila2(queue) == 0);
+    return 0;
+}
+
 int alreadyJoined(PFILA2 queue, int tid){
     TCB_t *thread;
     if(FirstFila2(queue) != 0){
@@ -140,6 +158,7 @@ void initializeCthreads(){
     if(failed){
         printf("Error: join queue initialization failed\n");
     }
+
 
     getcontext(&cleaner);
     cleaner.uc_link = 0;
@@ -233,7 +252,7 @@ int cjoin(int tid){
         //printf("ERROR: you can only make a cjoin for a thread once at a time!\n");
         return -1;
     }
-    if(isOnQueue(&readyQueue, tid) || isOnQueue(&blockedQueue, tid)){
+    if(isOnQueue(&readyQueue, tid) || isOnQueue(&blockedQueue, tid) || isOnQueueTid(&semaphoreTids,tid)){
         thread = running;
         joinTh = thread;
         joinTh->bTid = tid;
@@ -259,6 +278,10 @@ int cjoin(int tid){
 int csem_init(csem_t *sem, int count){
     if(!initializedCthreads){
       initializeCthreads();
+    }
+    int failed = CreateFila2(&semaphoreTids);
+    if(failed){
+        printf("Error: semaphoreTids queue initialization failed\n");
     }
     sem->count = count;
     sem->fila = malloc(sizeof(FILA2));
@@ -290,6 +313,9 @@ int cwait(csem_t *sem){
         if(AppendFila2(sem->fila, (void*)blockedTh) != 0){
             return -1;
         }
+        if(AppendFila2(&semaphoreTids, (void*)blockedTh->tid) != 0){
+           printf("ERROR: failed inserting in semaphoreTid Queue\n");
+        }
         running = 0;
         sem->count = sem->count - 1;
         swapcontext(&blockedTh->context, &cleaner);
@@ -313,6 +339,9 @@ int csignal(csem_t *sem){
         TCB_t *freedTh = (TCB_t*)GetAtIteratorFila2(sem->fila);
         DeleteAtIteratorFila2(sem->fila);
         freedTh->state = PROCST_APTO;
+        if(FirstFila2(&semaphoreTids) == 0){
+            DeleteAtIteratorFila2(&semaphoreTids);
+        }
         if(InsertByPrio(&readyQueue, (void*)freedTh) == 0){
             return 0;
         }

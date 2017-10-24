@@ -3,7 +3,7 @@
 
 #include "cthread.h"
 
-/*Saída esperada sem prioridades:
+/*Saída esperada sem prioridades: - a ordem dos prints tende a mudar de execução para execução com as prioridades.
 creating twinkle thread with tid = 1
 creating twinkle thread with tid = 2
 creating little thread with tid = 3
