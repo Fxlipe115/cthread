@@ -6,10 +6,11 @@ SRC_DIR=$(realpath ./src)
 
 SRC=$(wildcard $(SRC_DIR)/*.c)
 BIN=$(addprefix $(BIN_DIR)/, $(notdir $(SRC:.c=.o)))
-CFLAGS=-Wall -I$(INC_DIR) -std=gnu99 -m32
+LIB=$(LIB_DIR)/libcthread.a
+CFLAGS=-Wall -I$(INC_DIR) -std=gnu99 -m32 -O2
 
 all: $(BIN)
-	ar -cvq $(LIB_DIR)/libcthread.a $^ $(BIN_DIR)/support.o
+	ar -cvq $(LIB) $^ $(BIN_DIR)/support.o
 
 $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BIN_DIR)
@@ -19,8 +20,10 @@ $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
 .PHONY: debug	
 .PHONY: clean
 	
-install:
-	
+install: $(LIB) $(INC_DIR)/cthread.h
+	@install -t /usr/lib $(LIB)
+	@install -t /usr/include $(INC_DIR)/*
+
 debug:
 	@echo $(SRC)
 	@echo $(BIN)
